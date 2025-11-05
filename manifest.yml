@@ -1,0 +1,141 @@
+modules:
+  action:
+    - key: get-xray-data
+      name: Get Xray Data for a Test Issue
+      function: getXrayData
+      description: Fetches Xray data for a given test issue with user choice of data type.
+      inputs:
+        issueId:
+          title: Issue Id
+          type: string
+          description: The issue id for the Jira issue that the Xray data is being retrieved for.
+          required: true
+        dataType:
+          title: Data Type
+          type: string
+          description: The type of data to retrieve (test-steps, preconditions, test-sets, test-plans, test-runs).
+          required: false
+      actionVerb: GET
+    - key: get-test-steps
+      name: Get Test Steps
+      function: getTestSteps
+      description: Fetches test steps, actions, and expected results for a test issue.
+      inputs:
+        issueId:
+          title: Issue Id
+          type: string
+          description: The issue id for the Jira test issue.
+          required: true
+      actionVerb: GET
+    - key: get-preconditions
+      name: Get Test Preconditions
+      function: getPreconditions
+      description: Fetches preconditions for a test issue.
+      inputs:
+        issueId:
+          title: Issue Id
+          type: string
+          description: The issue id for the Jira test issue.
+          required: true
+      actionVerb: GET
+    - key: get-test-sets
+      name: Get Test Sets
+      function: getTestSets
+      description: Fetches test sets containing the specified test issue.
+      inputs:
+        issueId:
+          title: Issue Id
+          type: string
+          description: The issue id for the Jira test issue.
+          required: true
+      actionVerb: GET
+    - key: get-test-plans
+      name: Get Test Plans
+      function: getTestPlans
+      description: Fetches test plans containing the specified test issue.
+      inputs:
+        issueId:
+          title: Issue Id
+          type: string
+          description: The issue id for the Jira test issue.
+          required: true
+      actionVerb: GET
+    - key: get-test-runs
+      name: Get Test Runs
+      function: getTestRuns
+      description: Fetches execution history and test runs for a test issue.
+      inputs:
+        issueId:
+          title: Issue Id
+          type: string
+          description: The issue id for the Jira test issue.
+          required: true
+      actionVerb: GET
+  rovo:agent:
+    - key: xray-action-lb
+      name: xray-action-lb
+      description: A simple agent to demonstrate the use of custom actions.
+      prompt: >
+        You are a helpful agent that demonstrates how to use custom actions.
+
+
+        You can perform the following jobs:
+
+        a. Get Xray Data for a Test Issue
+
+
+        I'll separate the instructions for each job with a. '---' on a new line,
+        followed by the job title.
+
+
+        ---
+
+        a. Get Xray Data for a Test Issue
+
+        To do this, follow these steps:
+
+        1. If there is not an issue key in the context, ask for one
+
+        2. fetch the Xray specific data using the get-xray-data action
+
+        3. return the retrieved Xray data to the user
+
+      conversationStarters:
+        - retrieve Xray data for this test case
+        - get test steps for this issue
+        - get test runs for this issue
+      actions:
+        - get-xray-data
+        - get-test-steps
+        - get-preconditions
+        - get-test-sets
+        - get-test-plans
+        - get-test-runs
+  function:
+    - key: getXrayData
+      handler: index.getXrayData
+    - key: getTestSteps
+      handler: index.getTestSteps
+    - key: getPreconditions
+      handler: index.getPreconditions
+    - key: getTestSets
+      handler: index.getTestSets
+    - key: getTestPlans
+      handler: index.getTestPlans
+    - key: getTestRuns
+      handler: index.getTestRuns
+app:
+  runtime:
+    name: nodejs22.x
+    memoryMB: 256
+    architecture: arm64
+  id: ari:cloud:ecosystem::app/4bef5a04-26c3-4fc1-aed2-3ffa188a86af
+permissions:
+  scopes:
+    - write:jira-work
+    - read:jira-work
+    - read:chat:rovo
+  external:
+    fetch:
+      backend:
+      - 'https://xray.cloud.getxray.app'
