@@ -1,17 +1,16 @@
 # Xray Action Library - Forge Rovo Agent
 
-A Forge-based Rovo agent that provides seamless integration between Atlassian products and Xray test management. This agent enables users to manage Jira comments and execute Xray test operations directly through conversational AI.
+A Forge-based Rovo agent that provides comprehensive access to Xray test management data. This agent enables users to retrieve detailed test information from Xray through conversational AI, including test steps, preconditions, test sets, test plans, and execution history.
 
 ## 🚀 Features
 
-### Jira Integration
-- **Fetch Comments**: Retrieve all comments from a Jira issue
-- **Add Comments**: Add new comments to Jira issues with proper ADF formatting
-
-### Xray Integration
-- **Execute Tests**: Run Xray test executions
-- **Import Test Results**: Import test results into Xray
-- **Authenticate**: Secure authentication with Xray Cloud API
+### Xray Test Data Retrieval
+- **Get Xray Data**: Retrieve comprehensive Xray data for any test issue with user choice of data type
+- **Get Test Steps**: Fetch detailed test steps, actions, and expected results
+- **Get Preconditions**: Retrieve test preconditions and setup requirements
+- **Get Test Sets**: Find all test sets containing a specific test issue
+- **Get Test Plans**: Discover test plans that include a specific test issue
+- **Get Test Runs**: Access execution history and test run details
 
 ## 📋 Prerequisites
 
@@ -68,67 +67,98 @@ The app requires the following Atlassian permissions:
 
 ### Available Actions
 
-#### 1. Fetch Comments
-Retrieve all comments from a specific Jira issue.
+#### 1. Get Xray Data
+Retrieve comprehensive Xray data for a test issue with user choice of data type.
 
 **Parameters**:
-- `issueId`: The Jira issue ID (e.g., "PROJ-123")
+- `issueId`: The Jira test issue ID (e.g., "PROJ-123")
+- `dataType`: Type of data to retrieve (optional): test-steps, preconditions, test-sets, test-plans, test-runs
 
 **Example**:
 ```javascript
-fetchComments({ issueId: "PROJ-123" })
+getXrayData({ issueId: "PROJ-123", dataType: "test-steps" })
 ```
 
-#### 2. Add Comment
-Add a new comment to a Jira issue.
+#### 2. Get Test Steps
+Fetch detailed test steps, actions, and expected results for a test issue.
 
 **Parameters**:
-- `issueId`: The Jira issue ID
-- `comment`: The comment text to add
+- `issueId`: The Jira test issue ID
 
 **Example**:
 ```javascript
-addComment({ 
-  issueId: "PROJ-123", 
-  comment: "Test execution completed successfully" 
-})
+getTestSteps({ issueId: "PROJ-123" })
 ```
 
-#### 3. Execute Xray Test
-Execute an Xray test and return the results.
+#### 3. Get Preconditions
+Retrieve preconditions and setup requirements for a test issue.
 
 **Parameters**:
-- `testId`: The Xray test ID
-- Additional execution parameters as needed
+- `issueId`: The Jira test issue ID
 
-#### 4. Import Test Results
-Import test execution results into Xray.
+**Example**:
+```javascript
+getPreconditions({ issueId: "PROJ-123" })
+```
+
+#### 4. Get Test Sets
+Find all test sets that contain the specified test issue.
 
 **Parameters**:
-- Test result data in the appropriate format
+- `issueId`: The Jira test issue ID
+
+**Example**:
+```javascript
+getTestSets({ issueId: "PROJ-123" })
+```
+
+#### 5. Get Test Plans
+Discover test plans that include the specified test issue.
+
+**Parameters**:
+- `issueId`: The Jira test issue ID
+
+**Example**:
+```javascript
+getTestPlans({ issueId: "PROJ-123" })
+```
+
+#### 6. Get Test Runs
+Access execution history and test run details for a test issue.
+
+**Parameters**:
+- `issueId`: The Jira test issue ID
+
+**Example**:
+```javascript
+getTestRuns({ issueId: "PROJ-123" })
+```
 
 ### Conversational Interface
 
 The Rovo agent supports natural language interactions. You can:
 
-- Ask to "fetch comments from PROJ-123"
-- Request to "add a comment to issue ABC-456"
-- Execute tests through conversational commands
-- Import test results with simple instructions
+- Ask to "retrieve Xray data for this test case"
+- Request to "get test steps for PROJ-123"
+- Say "get test runs for this issue"
+- Ask for "preconditions for test ABC-456"
+- Request "show me test plans containing this test"
 
 ## 🏗️ Architecture
 
 ```
 src/
 ├── index.js          # Main application logic
-│   ├── addComment()          # Jira comment creation
-│   ├── fetchComments()       # Jira comment retrieval
-│   ├── executeXrayTest()     # Xray test execution
-│   └── importToXray()        # Test result import
+│   ├── getXrayData()         # Get comprehensive Xray data
+│   ├── getTestSteps()        # Get test steps and expected results
+│   ├── getPreconditions()    # Get test preconditions
+│   ├── getTestSets()         # Get test sets containing the test
+│   ├── getTestPlans()        # Get test plans containing the test
+│   └── getTestRuns()         # Get execution history and test runs
 │
 manifest.yml          # Forge app configuration
 ├── Rovo agent definition
-├── Action definitions
+├── Six Xray-specific actions
 └── Permission scopes
 ```
 
@@ -161,21 +191,25 @@ manifest.yml          # Forge app configuration
 
 The main logic is contained in `src/index.js` with the following exported functions:
 
-- `addComment(payload)` - Adds comments to Jira issues
-- `fetchComments(payload)` - Retrieves comments from Jira issues
-- `executeXrayTest(payload)` - Executes Xray tests
-- `importToXray(payload)` - Imports test results to Xray
+- `getXrayData(payload)` - Retrieves comprehensive Xray data with user choice of data type
+- `getTestSteps(payload)` - Fetches detailed test steps, actions, and expected results
+- `getPreconditions(payload)` - Retrieves test preconditions and setup requirements
+- `getTestSets(payload)` - Finds test sets containing the specified test issue
+- `getTestPlans(payload)` - Discovers test plans that include the specified test issue
+- `getTestRuns(payload)` - Accesses execution history and test run details
 
 ## 📝 API Reference
 
-### Jira REST API Endpoints Used
-- `GET /rest/api/3/issue/{issueId}/comment` - Fetch comments
-- `POST /rest/api/3/issue/{issueId}/comment` - Add comments
-
 ### Xray Cloud API Endpoints Used
-- Authentication endpoint for token generation
-- Test execution endpoints
-- Test result import endpoints
+- `POST /api/v1/authenticate` - Authentication endpoint for token generation
+- `POST /api/v2/graphql` - GraphQL endpoint for retrieving test data including:
+  - Test steps and expected results
+  - Test preconditions
+  - Test sets and test plans
+  - Test execution history and runs
+
+### Jira REST API Endpoints Used
+- `GET /rest/api/3/issue/{issueId}` - Fetch issue details for Xray test data
 
 ## 🤝 Contributing
 
