@@ -71,6 +71,17 @@ modules:
           description: The issue id for the Jira test issue.
           required: true
       actionVerb: GET
+    - key: get-user-story
+      name: Get User Story
+      function: getUserStory
+      description: Finds the user story that a given test is testing by looking for the "tests" link type.
+      inputs:
+        issueId:
+          title: Issue Id
+          type: string
+          description: The issue id for the Jira test issue.
+          required: true
+      actionVerb: GET
   rovo:agent:
     - key: xray-action-lb
       name: xray-action-lb
@@ -111,6 +122,7 @@ modules:
         - get-test-sets
         - get-test-plans
         - get-test-runs
+        - get-user-story
   function:
     - key: getXrayData
       handler: index.getXrayData
@@ -124,6 +136,8 @@ modules:
       handler: index.getTestPlans
     - key: getTestRuns
       handler: index.getTestRuns
+    - key: getUserStory
+      handler: index.getUserStory
 app:
   runtime:
     name: nodejs22.x

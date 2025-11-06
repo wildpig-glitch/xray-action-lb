@@ -912,3 +912,108 @@ export async function getTestRuns(payload) {
     throw error;
   }
 }
+
+export async function getUserStory(payload) {
+  console.log('🔍 === getUserStory STARTED ===');
+  console.log('📋 Payload received:', JSON.stringify(payload, null, 2));
+  
+  const issueId = payload.issueId;
+  
+  if (!issueId) {
+    console.error('💥 Missing required parameter: issueId');
+    throw new Error('issueId is required');
+  }
+
+  console.log(`🎯 Finding user story for test: ${issueId}`);
+
+  try {
+    // Get issue links to find the "tests" link type
+    const response = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}`, {
+      headers: {
+        'Accept': 'application/json'
+      },
+      query: {
+        expand: 'issuelinks'
+      }
+    });
+
+    if (!response.ok) {
+      console.error(`💥 Failed to fetch issue ${issueId}: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('💥 Error response:', errorText);
+      throw new Error(`Failed to fetch issue: ${response.status} ${response.statusText}`);
+    }
+
+    const issueData = await response.json();
+    console.log('📄 Issue data retrieved successfully');
+    console.log('🔗 Issue links found:', issueData.fields.issuelinks?.length || 0);
+
+    // Find the "tests" link type
+    const issueLinks = issueData.fields.issuelinks || [];
+    const testsLinks = issueLinks.filter(link => 
+      link.type.name === 'Tests' || 
+      link.type.inward === 'is tested by' || 
+      link.type.outward === 'tests'
+    );
+
+    console.log(`🎯 Found ${testsLinks.length} "tests" type links`);
+
+    if (testsLinks.length === 0) {
+      console.log('⚠️ No user stories found that this test is testing');
+      return {
+        testIssue: {
+          key: issueData.key,
+          summary: issueData.fields.summary
+        },
+        userStories: [],
+        message: 'No user stories found that this test is testing'
+      };
+    }
+
+    // Extract user stories (the target of the "tests" link)
+    const userStories = testsLinks.map(link => {
+      // For "tests" links, the user story is typically the inwardIssue 
+      // (when the test "tests" the user story)
+      const userStoryIssue = link.inwardIssue || link.outwardIssue;
+      
+      if (!userStoryIssue) {
+        console.log('⚠️ Link found but no target issue:', link);
+        return null;
+      }
+
+      console.log(`📋 Found user story: ${userStoryIssue.key} - ${userStoryIssue.fields.summary}`);
+      
+      return {
+        key: userStoryIssue.key,
+        summary: userStoryIssue.fields.summary,
+        issueType: userStoryIssue.fields.issuetype.name,
+        status: userStoryIssue.fields.status.name,
+        url: `${userStoryIssue.self.replace('/rest/api/3/issue/', '/browse/')}`,
+        linkType: link.type.name,
+        linkDirection: link.inwardIssue ? 'inward' : 'outward'
+      };
+    }).filter(story => story !== null);
+
+    const formattedResponse = {
+      testIssue: {
+        key: issueData.key,
+        summary: issueData.fields.summary,
+        issueType: issueData.fields.issuetype.name
+      },
+      userStories: userStories,
+      totalFound: userStories.length,
+      message: userStories.length > 0 
+        ? `Found ${userStories.length} user story/stories that this test is testing`
+        : 'No user stories found that this test is testing'
+    };
+
+    console.log('🎉 === getUserStory COMPLETED SUCCESSFULLY ===');
+    console.log(`✅ Found ${userStories.length} user stories`);
+    
+    return formattedResponse;
+  } catch (error) {
+    console.error('💥 === getUserStory FAILED ===');
+    console.error('💥 Error details:', error.message);
+    throw error;
+  }
+}
