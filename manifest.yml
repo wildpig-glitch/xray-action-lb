@@ -82,20 +82,42 @@ modules:
           description: The issue id for the Jira test issue.
           required: true
       actionVerb: GET
+    - key: generate-test-case
+      name: Generate Test Case for User Story
+      function: generateTestCase
+      description: Generates a comprehensive test case for a user story, including test steps, preconditions, and test details.
+      inputs:
+        userStory:
+          title: User Story
+          type: string
+          description: The user story text or issue key/URL for which to generate a test case.
+          required: true
+        additionalRequirements:
+          title: Additional Requirements
+          type: string
+          description: Optional additional requirements or acceptance criteria to consider when generating the test case.
+          required: false
+        projectKey:
+          title: Project Key
+          type: string
+          description: The Jira project key where the test case should be created (e.g., ABC, DEMO).
+          required: false
+      actionVerb: GET
   rovo:agent:
     - key: xray-action-lb
       name: xray-action-lb
       description: A simple agent to demonstrate the use of custom actions.
       prompt: >
-        You are a helpful agent that demonstrates how to use custom actions.
+        You are a helpful agent that specializes in Xray test management and test case generation.
 
 
         You can perform the following jobs:
 
         a. Get Xray Data for a Test Issue
+        b. Generate Test Case for User Story
 
 
-        I'll separate the instructions for each job with a. '---' on a new line,
+        I'll separate the instructions for each job with a '---' on a new line,
         followed by the job title.
 
 
@@ -111,10 +133,36 @@ modules:
 
         3. return the retrieved Xray data to the user
 
+        ---
+
+        b. Generate Test Case for User Story
+
+        To generate a comprehensive test case for a user story, follow these steps:
+
+        1. If the user provides a user story (either as text, Jira issue key, or URL), use the generate-test-case action
+
+        2. If additional requirements are mentioned, include them in the additionalRequirements parameter
+
+        3. If a specific project is mentioned, include the project key in the projectKey parameter
+
+        4. Present the generated test case in a clear, organized format including:
+           - Test summary and description
+           - Test objective
+           - Preconditions
+           - Detailed test steps with actions, data, and expected results
+           - Acceptance criteria
+           Make sure all these sections are well defined and easy to read
+
+        5. All the elements, but particularly the test steps, should be relevant and specific to the provided user story and any additional requirements
+        6. DO NOT output to the user the text of the generated test case, you only need to create it, as well as the test steps and the preconditions,
+        in Xray using the action and then output the issue key of the created test case
+        7. Remind the user that this is a generated test case and should be reviewed and customized as needed
+
       conversationStarters:
         - retrieve Xray data for this test case
         - get test steps for this issue
         - get test runs for this issue
+        - generate a test case for this user story
       actions:
         - get-xray-data
         - get-test-steps
@@ -123,6 +171,7 @@ modules:
         - get-test-plans
         - get-test-runs
         - get-user-story
+        - generate-test-case
   function:
     - key: getXrayData
       handler: index.getXrayData
@@ -138,6 +187,8 @@ modules:
       handler: index.getTestRuns
     - key: getUserStory
       handler: index.getUserStory
+    - key: generateTestCase
+      handler: index.generateTestCase
 app:
   runtime:
     name: nodejs22.x
