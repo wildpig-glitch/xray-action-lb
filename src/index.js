@@ -1190,7 +1190,6 @@ export async function generateTestCase(payload) {
  */
 export async function getLinkedTestCases(payload) {
   console.log('🎯 === STARTING getLinkedTestCases FUNCTION ===');
-  console.log('📥 Received payload:', JSON.stringify(payload, null, 2));
 
   const { issueId } = payload;
   
