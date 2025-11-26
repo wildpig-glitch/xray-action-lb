@@ -82,6 +82,17 @@ modules:
           description: The issue id for the Jira test issue.
           required: true
       actionVerb: GET
+    - key: get-linked-test-cases
+      name: Get Linked Test Cases
+      function: getLinkedTestCases
+      description: Finds all test cases linked to a user story via 'is tested by' or 'tests' relationships.
+      inputs:
+        issueId:
+          title: Issue Id
+          type: string
+          description: The issue id for the user story to find linked test cases for.
+          required: true
+      actionVerb: GET
     - key: generate-test-case
       name: Generate Test Case for User Story
       function: generateTestCase
@@ -171,6 +182,7 @@ modules:
         - get-test-plans
         - get-test-runs
         - get-user-story
+        - get-linked-test-cases
         - generate-test-case
   function:
     - key: getXrayData
@@ -187,6 +199,8 @@ modules:
       handler: index.getTestRuns
     - key: getUserStory
       handler: index.getUserStory
+    - key: getLinkedTestCases
+      handler: index.getLinkedTestCases
     - key: generateTestCase
       handler: index.generateTestCase
 app:

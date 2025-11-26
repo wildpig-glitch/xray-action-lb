@@ -1185,6 +1185,115 @@ export async function generateTestCase(payload) {
   return response;
 }
 
+/**
+ * Finds all test cases linked to a user story via 'is tested by' / 'tests' link types
+ */
+export async function getLinkedTestCases(payload) {
+  console.log('🎯 === STARTING getLinkedTestCases FUNCTION ===');
+  console.log('📥 Received payload:', JSON.stringify(payload, null, 2));
+
+  const { issueId } = payload;
+  
+  if (!issueId) {
+    throw new Error('Issue ID is required');
+  }
+
+  console.log('🔗 Searching for linked test cases...');
+  
+  try {
+    // Get issue links from Jira
+    const response = await api.asUser().requestJira(route`/rest/api/3/issue/${issueId}?fields=issuelinks,summary,issuetype`, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get issue links: ${response.status} ${response.statusText}`);
+    }
+
+    const issueData = await response.json();
+    console.log(`📋 Processing issue: ${issueData.key} (${issueData.fields.issuetype.name})`);
+    console.log(`📝 Summary: ${issueData.fields.summary}`);
+    
+    const issueLinks = issueData.fields.issuelinks || [];
+    console.log(`🔗 Found ${issueLinks.length} total links`);
+
+    const testCases = [];
+
+    // Process each link to find test cases
+    for (const link of issueLinks) {
+      const linkType = link.type.name.toLowerCase();
+      console.log(`🔍 Processing link type: ${link.type.name}`);
+      
+      // Check outward links (this issue "is tested by" other issues)
+      if (link.outwardIssue && (linkType.includes('test') || link.type.outward.toLowerCase().includes('tested'))) {
+        const linkedIssue = link.outwardIssue;
+        console.log(`➡️ Outward link: ${linkedIssue.key} (${linkedIssue.fields.issuetype.name})`);
+        
+        // Check if linked issue is a Test type
+        if (linkedIssue.fields.issuetype.name.toLowerCase() === 'test') {
+          testCases.push({
+            key: linkedIssue.key,
+            id: linkedIssue.id,
+            summary: linkedIssue.fields.summary,
+            linkType: link.type.outward,
+            direction: 'outward'
+          });
+          console.log(`✅ Added test case: ${linkedIssue.key}`);
+        }
+      }
+      
+      // Check inward links (other issues "test" this issue)
+      if (link.inwardIssue && (linkType.includes('test') || link.type.inward.toLowerCase().includes('test'))) {
+        const linkedIssue = link.inwardIssue;
+        console.log(`⬅️ Inward link: ${linkedIssue.key} (${linkedIssue.fields.issuetype.name})`);
+        
+        // Check if linked issue is a Test type
+        if (linkedIssue.fields.issuetype.name.toLowerCase() === 'test') {
+          testCases.push({
+            key: linkedIssue.key,
+            id: linkedIssue.id,
+            summary: linkedIssue.fields.summary,
+            linkType: link.type.inward,
+            direction: 'inward'
+          });
+          console.log(`✅ Added test case: ${linkedIssue.key}`);
+        }
+      }
+    }
+
+    console.log(`🎯 Found ${testCases.length} linked test cases total`);
+
+    const result = {
+      userStory: {
+        key: issueData.key,
+        id: issueData.id,
+        summary: issueData.fields.summary,
+        issueType: issueData.fields.issuetype.name
+      },
+      testCases: testCases,
+      totalLinks: issueLinks.length,
+      testCasesFound: testCases.length
+    };
+
+    if (testCases.length === 0) {
+      console.log('⚠️ No test cases found linked to this user story');
+      result.message = `No test cases are linked to ${issueData.key}. Consider creating test cases and linking them with 'is tested by' relationships.`;
+    } else {
+      console.log('✅ Successfully found linked test cases');
+      result.message = `Found ${testCases.length} test case(s) linked to ${issueData.key}`;
+    }
+
+    console.log('🎯 === ENDING getLinkedTestCases FUNCTION ===');
+    return result;
+
+  } catch (error) {
+    console.error('❌ Error finding linked test cases:', error.message);
+    throw new Error(`Failed to find linked test cases: ${error.message}`);
+  }
+}
+
 // Helper function to generate test case content
 function generateTestCaseContent(userStoryText, additionalRequirements) {
   console.log('🔧 === Generating test case content ===');
