@@ -11,12 +11,13 @@ let cachedAuthToken = null;
 let tokenExpiration = null;
 
 // Function to get Xray authentication token
+
 async function getXrayAuthToken() {
   // Check if we have a cached token that's still valid
-  if (cachedAuthToken && tokenExpiration && Date.now() < tokenExpiration) {
+  /*if (cachedAuthToken && tokenExpiration && Date.now() < tokenExpiration) {
     console.log('🔐 Using cached authentication token');
     return cachedAuthToken;
-  }
+  }*/
 
   console.log('🔐 Starting Xray authentication process...');
   console.log('📍 Auth URL: ', XRAY_AUTH_URL);
