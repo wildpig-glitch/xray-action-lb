@@ -417,15 +417,11 @@ export async function getPreconditions(payload) {
     const jiraData = await jiraResponse.json();
     numericIssueId = jiraData.id;
     
-    // Use the original payload URL if it was provided, otherwise construct from known pattern
-    if (payload.issueId && payload.issueId.includes('/browse/')) {
-      const originalUrl = payload.issueId;
-      const urlParts = originalUrl.split('/browse/');
-      jiraBaseUrl = urlParts[0];
-    } else {
-      // Fallback: Use the known Jira instance URL pattern
-      jiraBaseUrl = 'https://one-atlas-jevs.atlassian.net';
+    // Extract base URL from the Jira API response 'self' field
+    if (!jiraData.self) {
+      throw new Error('Jira API response missing "self" field - cannot determine base URL');
     }
+    jiraBaseUrl = jiraData.self.replace(/\/rest\/api\/3\/issue\/.*/, '');
     
     console.log(`✅ Converted issue key ${issueId} to numeric ID: ${numericIssueId}`);
     console.log(`🌐 Jira base URL: ${jiraBaseUrl}`);
@@ -562,14 +558,14 @@ export async function getTestSets(payload) {
     const jiraData = await jiraResponse.json();
     numericIssueId = jiraData.id;
     
-    // Use the original payload URL if it was provided, otherwise construct from known pattern
+    // Use the original payload URL if it was provided, otherwise extract from Jira API response
     if (payload.issueId && payload.issueId.includes('/browse/')) {
       const originalUrl = payload.issueId;
       const urlParts = originalUrl.split('/browse/');
       jiraBaseUrl = urlParts[0];
     } else {
-      // Fallback: Use the known Jira instance URL pattern
-      jiraBaseUrl = 'https://one-atlas-jevs.atlassian.net';
+      // Extract base URL from the Jira API response 'self' field
+      jiraBaseUrl = jiraData.self.replace(/\/rest\/api\/3\/issue\/.*/, '');
     }
     
   } catch (error) {
@@ -680,14 +676,14 @@ export async function getTestPlans(payload) {
     const jiraData = await jiraResponse.json();
     numericIssueId = jiraData.id;
     
-    // Use the original payload URL if it was provided, otherwise construct from known pattern
+    // Use the original payload URL if it was provided, otherwise extract from Jira API response
     if (payload.issueId && payload.issueId.includes('/browse/')) {
       const originalUrl = payload.issueId;
       const urlParts = originalUrl.split('/browse/');
       jiraBaseUrl = urlParts[0];
     } else {
-      // Fallback: Use the known Jira instance URL pattern
-      jiraBaseUrl = 'https://one-atlas-jevs.atlassian.net';
+      // Extract base URL from the Jira API response 'self' field
+      jiraBaseUrl = jiraData.self.replace(/\/rest\/api\/3\/issue\/.*/, '');
     }
     
   } catch (error) {
@@ -798,14 +794,14 @@ export async function getTestRuns(payload) {
     const jiraData = await jiraResponse.json();
     numericIssueId = jiraData.id;
     
-    // Use the original payload URL if it was provided, otherwise construct from known pattern
+    // Use the original payload URL if it was provided, otherwise extract from Jira API response
     if (payload.issueId && payload.issueId.includes('/browse/')) {
       const originalUrl = payload.issueId;
       const urlParts = originalUrl.split('/browse/');
       jiraBaseUrl = urlParts[0];
     } else {
-      // Fallback: Use the known Jira instance URL pattern
-      jiraBaseUrl = 'https://one-atlas-jevs.atlassian.net';
+      // Extract base URL from the Jira API response 'self' field
+      jiraBaseUrl = jiraData.self.replace(/\/rest\/api\/3\/issue\/.*/, '');
     }
     
   } catch (error) {
@@ -1617,12 +1613,13 @@ async function createTestCaseInXray(testCaseContent, projectKey, jiraBaseUrl, us
     );
     console.log(`✅ Test case created with ID: ${testCase.issueId}`);
     
-    // Determine Jira base URL for linking
-    let baseUrl = jiraBaseUrl;
-    if (!baseUrl) {
-      // Try to construct base URL from project key
-      baseUrl = `https://one-atlas-jevs.atlassian.net`; // You may want to make this configurable
+    // Determine Jira base URL for linking - must be provided or fail
+    if (!jiraBaseUrl) {
+      console.error('❌ No jiraBaseUrl provided to createTestCaseInXray function');
+      throw new Error('jiraBaseUrl parameter is required but was not provided. Cannot generate issue URL.');
     }
+    
+    const baseUrl = jiraBaseUrl;
     
     const result = {
       jiraIssueId: testCase.issueId,
