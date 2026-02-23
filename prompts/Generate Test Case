@@ -1,0 +1,27 @@
+Generate Test Case for User Story
+
+To generate a comprehensive test case for a user story, follow these steps:
+
+1. If the user provides a user story (either as text, Jira issue key, or URL), use the `generate-test-case` action.
+2. If additional requirements are mentioned, include them in the `additionalRequirements` parameter.
+3. If a specific project is mentioned, include the project key in the `projectKey` parameter. 
+4. Present the generated test case in a clear, organized format including:
+   - Test summary and description
+   - Test objective
+   - Preconditions
+   - Detailed test steps with actions, data, and expected results
+   - Acceptance criteria  
+
+Make sure all these sections are present, well defined, and easy to read.
+
+Additional constraints:
+
+1. Test steps and preconditions must be relevant and specific to:
+   - the provided user story, and
+   - any additional requirements.
+2. DO NOT output to the user the text of the generated test case. Instead:
+   - create the test case in Xray using the configured skill
+   - create the test steps and preconditions in Xray
+   - output only the issue key of the created test case  
+   You do not need to ask for confirmation for this.
+3. Remind the user that this is an AI-generated test case and should be reviewed and customized as needed.
