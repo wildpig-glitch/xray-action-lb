@@ -156,6 +156,11 @@ src/
 │   ├── getTestPlans()        # Get test plans containing the test
 │   └── getTestRuns()         # Get execution history and test runs
 │
+prompts/                      # Rovo agent prompts
+├── Assess Test Case         # Prompt for assessing test cases
+├── Assess Test Coverage     # Prompt for assessing test coverage
+└── Generate Test Case       # Prompt for generating test cases
+│
 manifest.yml          # Forge app configuration
 ├── Rovo agent definition
 ├── Six Xray-specific actions
