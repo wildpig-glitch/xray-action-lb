@@ -1020,6 +1020,277 @@ export async function getUserStory(payload) {
 }
 
 // Function to generate comprehensive test case for user story
+/**
+ * Fetches the full details of a user story, including its acceptance criteria,
+ * for use by the Rovo agent's LLM to generate intelligent test steps.
+ *
+ * This action can be called in two ways:
+ * 1. With a user story issue key directly (e.g. "SDF-22") — fetches that issue
+ * 2. With a test issue key — follows the "tests" link to find the linked user story,
+ *    then fetches its details. This mirrors the logic in getUserStory so the agent
+ *    can reliably navigate from a test back to its parent story.
+ *
+ * Returns the story's summary, description, and a structured list of acceptance
+ * criteria extracted from the ADF description — ready for the LLM to reason about.
+ *
+ * @param {object} payload
+ * @param {string} payload.issueKey - Jira issue key (user story or test issue)
+ */
+export async function getUserStoryDetails(payload) {
+  console.log('🔍 === getUserStoryDetails STARTED ===');
+  console.log('📋 Payload received:', JSON.stringify(payload, null, 2));
+
+  let issueKey = payload.issueKey;
+
+  if (!issueKey) {
+    throw new Error('issueKey is required');
+  }
+
+  // Strip any URL prefix — accept both "SDF-22" and full Jira URLs
+  const keyMatch = issueKey.match(/([A-Z][A-Z0-9]+-\d+)$/);
+  if (keyMatch) {
+    issueKey = keyMatch[1];
+  }
+
+  console.log(`🎯 Fetching issue details for: ${issueKey}`);
+
+  try {
+    // Fetch the issue with all fields and issue links expanded
+    const response = await api.asUser().requestJira(
+      route`/rest/api/3/issue/${issueKey}?expand=issuelinks`,
+      { headers: { 'Accept': 'application/json' } }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch issue ${issueKey}: ${response.status} - ${errorText}`);
+    }
+
+    let issueData = await response.json();
+    console.log(`📄 Fetched issue: ${issueData.key} (type: ${issueData.fields.issuetype.name})`);
+
+    // If this is a Test issue, follow the "tests" link to find the user story
+    const issueType = issueData.fields.issuetype.name.toLowerCase();
+    if (issueType === 'test') {
+      console.log('🔗 Issue is a Test — following "tests" link to find user story...');
+      const issueLinks = issueData.fields.issuelinks || [];
+      const testsLink = issueLinks.find(link =>
+        link.type.name === 'Tests' ||
+        link.type.inward === 'is tested by' ||
+        link.type.outward === 'tests'
+      );
+
+      if (!testsLink) {
+        throw new Error(`Test issue ${issueKey} has no linked user story. Please provide the user story key directly.`);
+      }
+
+      // The user story is the target of the "tests" link
+      const linkedIssue = testsLink.inwardIssue || testsLink.outwardIssue;
+      if (!linkedIssue) {
+        throw new Error(`Could not resolve linked user story from test issue ${issueKey}`);
+      }
+
+      console.log(`🔗 Found linked story: ${linkedIssue.key} — fetching full details...`);
+
+      // Fetch the full user story details
+      const storyResponse = await api.asUser().requestJira(
+        route`/rest/api/3/issue/${linkedIssue.key}`,
+        { headers: { 'Accept': 'application/json' } }
+      );
+
+      if (!storyResponse.ok) {
+        const errorText = await storyResponse.text();
+        throw new Error(`Failed to fetch user story ${linkedIssue.key}: ${storyResponse.status} - ${errorText}`);
+      }
+
+      issueData = await storyResponse.json();
+      console.log(`📄 Fetched user story: ${issueData.key}`);
+    }
+
+    // Extract the Jira base URL from the issue's self URL
+    // e.g. "https://mysite.atlassian.net/rest/api/3/issue/123" → "https://mysite.atlassian.net"
+    const jiraBaseUrl = issueData.self.replace(/\/rest\/api\/.*/, '');
+
+    // Extract plain text from the ADF description for the agent to read
+    const adfDescription = issueData.fields.description;
+    const descriptionText = adfDescription ? extractTextFromADF(adfDescription) : 'No description provided';
+
+    // Extract acceptance criteria as a structured list — this is the key data
+    // the LLM will use to generate one specific test step per criterion
+    const acceptanceCriteria = adfDescription
+      ? extractAcceptanceCriteriaFromADF(adfDescription)
+      : extractAcceptanceCriteriaFromText(descriptionText);
+
+    console.log(`📋 Extracted ${acceptanceCriteria.length} acceptance criteria`);
+
+    const result = {
+      key: issueData.key,
+      summary: issueData.fields.summary,
+      issueType: issueData.fields.issuetype.name,
+      status: issueData.fields.status.name,
+      url: `${jiraBaseUrl}/browse/${issueData.key}`,
+      projectKey: issueData.fields.project.key,
+      description: descriptionText,
+      // Acceptance criteria as a numbered list — each item should become one test step
+      acceptanceCriteria: acceptanceCriteria,
+      acceptanceCriteriaCount: acceptanceCriteria.length,
+      // Formatted text version for easy reading by the LLM
+      acceptanceCriteriaText: acceptanceCriteria.length > 0
+        ? acceptanceCriteria.map((ac, i) => `${i + 1}. ${ac}`).join('\n')
+        : 'No explicit acceptance criteria found — derive test steps from the story description.'
+    };
+
+    console.log('🎉 === getUserStoryDetails COMPLETED SUCCESSFULLY ===');
+    return result;
+
+  } catch (error) {
+    console.error('💥 === getUserStoryDetails FAILED ===');
+    console.error('💥 Error:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Creates a test case in Xray Cloud using LLM-generated content provided by the Rovo agent.
+ *
+ * This is the "thin" creation action in the LLM-driven architecture. The Rovo agent's LLM
+ * reads the user story, reasons about the acceptance criteria, and generates the test steps
+ * itself. This action simply takes that generated content and persists it into Xray.
+ *
+ * Test steps and preconditions are passed as JSON strings (because Forge action inputs only
+ * support primitive types). This function parses them and delegates to the existing Xray
+ * creation infrastructure.
+ *
+ * @param {object} payload
+ * @param {string} payload.projectKey - Jira project key (e.g. "SDF")
+ * @param {string} payload.userStoryKey - Issue key of the user story being tested (e.g. "SDF-22")
+ * @param {string} payload.summary - Test case summary/title
+ * @param {string} payload.description - Test case description (plain text or markdown)
+ * @param {string} payload.testSteps - JSON string: [{"action":"...","data":"...","result":"..."}]
+ * @param {string} [payload.preconditions] - JSON string: ["precondition 1", "precondition 2"]
+ */
+export async function createXrayTest(payload) {
+  console.log('🚀 === createXrayTest STARTED ===');
+  console.log('📋 Payload received:', JSON.stringify(payload, null, 2));
+
+  const { projectKey, userStoryKey, summary, description, testSteps: testStepsJson, preconditions: preconditionsJson } = payload;
+
+  // Validate required inputs
+  if (!projectKey) throw new Error('projectKey is required');
+  if (!userStoryKey) throw new Error('userStoryKey is required');
+  if (!summary) throw new Error('summary is required');
+  if (!testStepsJson) throw new Error('testSteps is required');
+
+  // Parse test steps from JSON string
+  let testSteps;
+  try {
+    testSteps = JSON.parse(testStepsJson);
+    if (!Array.isArray(testSteps) || testSteps.length === 0) {
+      throw new Error('testSteps must be a non-empty JSON array');
+    }
+  } catch (e) {
+    throw new Error(`Invalid testSteps JSON: ${e.message}. Expected format: [{"action":"...","data":"...","result":"..."}]`);
+  }
+
+  // Normalise step fields — the LLM may use "expectedResult" or "result"
+  const normalisedSteps = testSteps.map((step, i) => ({
+    action: step.action || `Step ${i + 1}`,
+    data: step.data || '',
+    result: step.result || step.expectedResult || ''
+  }));
+
+  // Parse preconditions from JSON string (optional)
+  let preconditionObjects = [];
+  if (preconditionsJson) {
+    try {
+      const parsed = JSON.parse(preconditionsJson);
+      if (Array.isArray(parsed)) {
+        // Support both string array ["pre1","pre2"] and object array [{condition,description}]
+        preconditionObjects = parsed.map((p, i) => {
+          if (typeof p === 'string') {
+            return { id: i + 1, condition: p, description: p };
+          }
+          return { id: i + 1, condition: p.condition || p.summary || String(p), description: p.description || p.condition || String(p) };
+        });
+      }
+    } catch (e) {
+      console.warn('⚠️ Could not parse preconditions JSON, skipping preconditions:', e.message);
+    }
+  }
+
+  console.log(`📝 Test summary: ${summary}`);
+  console.log(`🔧 Test steps: ${normalisedSteps.length}`);
+  console.log(`📋 Preconditions: ${preconditionObjects.length}`);
+
+  try {
+    // Fetch the user story to get its numeric Jira ID (needed for linking)
+    console.log(`🔍 Fetching user story ${userStoryKey} for linking...`);
+    const storyResponse = await api.asUser().requestJira(
+      route`/rest/api/3/issue/${userStoryKey}`,
+      { headers: { 'Accept': 'application/json' } }
+    );
+
+    if (!storyResponse.ok) {
+      throw new Error(`Failed to fetch user story ${userStoryKey}: ${storyResponse.status}`);
+    }
+
+    const storyData = await storyResponse.json();
+    const jiraBaseUrl = storyData.self.replace(/\/rest\/api\/.*/, '');
+
+    console.log(`✅ User story found: ${storyData.key} (ID: ${storyData.id})`);
+
+    // Build the testCaseContent object that the existing Xray creation infrastructure expects
+    const testCaseContent = {
+      summary,
+      description: description || `This test case validates the user story: ${userStoryKey}`,
+      testSteps: normalisedSteps.map((s, i) => ({
+        stepNumber: i + 1,
+        action: s.action,
+        data: s.data,
+        expectedResult: s.result
+      })),
+      preconditions: preconditionObjects
+    };
+
+    // Create preconditions in Xray first (if any)
+    let preconditionIds = [];
+    if (preconditionObjects.length > 0) {
+      console.log('🔧 Creating preconditions in Xray...');
+      preconditionIds = await createXrayPreconditions(preconditionObjects, projectKey);
+      console.log(`✅ Created ${preconditionIds.length} preconditions`);
+    }
+
+    // Create the test case using the existing Xray GraphQL mutation
+    console.log('🎯 Creating test case in Xray...');
+    const testCase = await createXrayTestCase(
+      testCaseContent,
+      projectKey,
+      normalisedSteps,
+      preconditionIds,
+      storyData  // Pass story data so createXrayTestCase can link test → story
+    );
+
+    const testCaseUrl = `${jiraBaseUrl}/browse/${testCase.jiraKey}`;
+
+    console.log(`✅ Test case created: ${testCase.jiraKey}`);
+    console.log('🎉 === createXrayTest COMPLETED SUCCESSFULLY ===');
+
+    return {
+      testCaseKey: testCase.jiraKey,
+      testCaseUrl,
+      userStoryKey,
+      stepsCreated: normalisedSteps.length,
+      preconditionsCreated: preconditionIds.length,
+      message: `Test case ${testCase.jiraKey} created successfully in Xray and linked to user story ${userStoryKey}`
+    };
+
+  } catch (error) {
+    console.error('💥 === createXrayTest FAILED ===');
+    console.error('💥 Error:', error.message);
+    throw error;
+  }
+}
+
 export async function generateTestCase(payload) {
   console.log('🎯 === STARTING generateTestCase FUNCTION ===');
   console.log('📥 Received payload:', JSON.stringify(payload, null, 2));

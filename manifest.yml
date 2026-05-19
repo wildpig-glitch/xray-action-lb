@@ -114,6 +114,53 @@ modules:
           description: The Jira project key where the test case should be created (e.g., ABC, DEMO).
           required: false
       actionVerb: GET
+    - key: get-user-story-details
+      name: Get User Story Details
+      function: getUserStoryDetails
+      description: Fetches a user story's summary, description and acceptance criteria by issue key. Also resolves the story from a Test issue key via the "tests" link.
+      inputs:
+        issueKey:
+          title: Issue Key
+          type: string
+          description: Jira issue key of the user story (e.g. SDF-22) or test issue (e.g. SDF-28). Test issues are resolved to their linked story automatically.
+          required: true
+      actionVerb: GET
+    - key: create-xray-test
+      name: Create Xray Test Case
+      function: createXrayTest
+      description: Creates a test case in Xray Cloud from LLM-generated content and links it to the originating user story.
+      inputs:
+        projectKey:
+          title: Project Key
+          type: string
+          description: The Jira project key where the test case should be created (e.g. SDF).
+          required: true
+        userStoryKey:
+          title: User Story Key
+          type: string
+          description: The issue key of the user story this test validates (e.g. SDF-22).
+          required: true
+        summary:
+          title: Test Summary
+          type: string
+          description: A concise summary/title for the test case (max 255 characters).
+          required: true
+        description:
+          title: Test Description
+          type: string
+          description: A plain text description of what this test validates.
+          required: false
+        testSteps:
+          title: Test Steps
+          type: string
+          description: JSON array of test steps with action, data and result fields. Example:[{"action":"...","data":"...","result":"..."}]
+          required: true
+        preconditions:
+          title: Preconditions
+          type: string
+          description: JSON array of precondition strings. Example:["User is logged in","Test data is available"]
+          required: false
+      actionVerb: CREATE
   rovo:agent:
     - key: xray-action-lb
       name: xray-action-lb
@@ -184,6 +231,8 @@ modules:
         - get-user-story
         - get-linked-test-cases
         - generate-test-case
+        - get-user-story-details
+        - create-xray-test
   function:
     - key: getXrayData
       handler: index.getXrayData
@@ -203,6 +252,10 @@ modules:
       handler: index.getLinkedTestCases
     - key: generateTestCase
       handler: index.generateTestCase
+    - key: getUserStoryDetails
+      handler: index.getUserStoryDetails
+    - key: createXrayTest
+      handler: index.createXrayTest
 app:
   runtime:
     name: nodejs22.x
