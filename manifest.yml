@@ -93,27 +93,6 @@ modules:
           description: The issue id for the user story to find linked test cases for.
           required: true
       actionVerb: GET
-    - key: generate-test-case
-      name: Generate Test Case for User Story
-      function: generateTestCase
-      description: Generates a comprehensive test case for a user story, including test steps, preconditions, and test details.
-      inputs:
-        userStory:
-          title: User Story
-          type: string
-          description: The user story text or issue key/URL for which to generate a test case.
-          required: true
-        additionalRequirements:
-          title: Additional Requirements
-          type: string
-          description: Optional additional requirements or acceptance criteria to consider when generating the test case.
-          required: false
-        projectKey:
-          title: Project Key
-          type: string
-          description: The Jira project key where the test case should be created (e.g., ABC, DEMO).
-          required: false
-      actionVerb: GET
     - key: get-user-story-details
       name: Get User Story Details
       function: getUserStoryDetails
@@ -231,8 +210,6 @@ modules:
       handler: index.getUserStory
     - key: getLinkedTestCases
       handler: index.getLinkedTestCases
-    - key: generateTestCase
-      handler: index.generateTestCase
     - key: getUserStoryDetails
       handler: index.getUserStoryDetails
     - key: createXrayTest
