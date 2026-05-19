@@ -1101,8 +1101,9 @@ export async function generateTestCase(payload) {
     }
   }
 
-  // Generate comprehensive test case content
-  const testCaseContent = generateTestCaseContent(userStoryText, additionalRequirements);
+  // Generate comprehensive test case content, passing the raw Jira issue data so that
+  // structured ADF acceptance criteria can be extracted for specific, traceable test steps.
+  const testCaseContent = generateTestCaseContent(userStoryText, additionalRequirements, userStoryData);
   
   console.log('🎯 Generated test case content');
   console.log('📝 Test summary:', testCaseContent.summary);
@@ -1132,7 +1133,6 @@ export async function generateTestCase(payload) {
       testSteps: testCaseContent.testSteps,
       preconditions: testCaseContent.preconditions,
       expectedResults: testCaseContent.expectedResults,
-      testData: testCaseContent.testData,
       acceptanceCriteria: testCaseContent.acceptanceCriteria
     },
     metadata: {
@@ -1295,7 +1295,19 @@ export async function getLinkedTestCases(payload) {
 }
 
 // Helper function to generate test case content
-function generateTestCaseContent(userStoryText, additionalRequirements) {
+/**
+ * Generates the full test case content object from a user story.
+ *
+ * Accepts the raw Jira issue data object (userStoryData) so that structured ADF content
+ * can be used for accurate acceptance-criteria extraction — producing specific, traceable
+ * test steps rather than generic boilerplate.
+ *
+ * @param {string} userStoryText - Plain text representation of the user story
+ * @param {string|null} additionalRequirements - Any extra requirements from the user
+ * @param {object|null} userStoryData - Raw Jira issue object (fields.description is ADF)
+ * @returns {object} Complete test case content object
+ */
+function generateTestCaseContent(userStoryText, additionalRequirements, userStoryData = null) {
   console.log('🔧 === Generating test case content ===');
   
   // Extract key information from user story
@@ -1308,64 +1320,66 @@ function generateTestCaseContent(userStoryText, additionalRequirements) {
   // Create test objective
   const testObjective = `Verify that the functionality described in the user story works as expected: "${title}"`;
   
-  // Generate test description - fix the [object Object] issue
+  // Generate test description
   let description = `This test case validates the user story:\n\n${userStoryText}`;
   if (additionalRequirements) {
     description += `\n\nAdditional Requirements:\n${additionalRequirements}`;
   }
-  
-  // Generate preconditions
+
+  // Pull the raw ADF description from the Jira issue when available.
+  // This gives us structured bullet lists for accurate criteria extraction.
+  const adfDescription = (userStoryData && userStoryData.fields && typeof userStoryData.fields.description === 'object')
+    ? userStoryData.fields.description
+    : null;
+
+  // Extract acceptance criteria now (shared between test steps and the AC section below)
+  let parsedCriteria = [];
+  if (adfDescription) {
+    parsedCriteria = extractAcceptanceCriteriaFromADF(adfDescription);
+  }
+  if (parsedCriteria.length === 0) {
+    parsedCriteria = extractAcceptanceCriteriaFromText(userStoryText);
+  }
+  console.log(`📋 Total parsed acceptance criteria: ${parsedCriteria.length}`);
+
+  // Generate preconditions — add role/permission precondition only when the story
+  // mentions access controls, otherwise keep it lean and relevant.
+  const lowerText = userStoryText.toLowerCase();
   const preconditions = [
     {
       id: 1,
-      condition: "User has valid access credentials and permissions",
-      description: "The test user must be authenticated and have appropriate permissions to perform the required actions"
+      condition: `Test environment is set up for "${title}"`,
+      description: "All services, databases, and dependencies required by this feature are running and accessible in the test environment"
     },
     {
       id: 2,
-      condition: "Test environment is properly configured",
-      description: "All necessary systems, databases, and services are running and accessible"
-    },
-    {
-      id: 3,
-      condition: "Test data is prepared and available",
-      description: "Required test data is set up in the system and ready for use"
+      condition: "Test user has the required role and permissions",
+      description: "The test account has sufficient privileges to exercise the functionality described in the user story"
     }
   ];
+
+  // Add a data-preparation precondition only when the story involves data operations
+  if (lowerText.includes('data') || lowerText.includes('catalog') || lowerText.includes('asset') || lowerText.includes('record') || lowerText.includes('entry')) {
+    preconditions.push({
+      id: preconditions.length + 1,
+      condition: "Relevant test data is prepared and available",
+      description: `Sample data representing the entities described in "${title}" is loaded into the test environment`
+    });
+  }
   
-  // Generate test steps based on the actual user story content
-  const testSteps = generateTestSteps(userStoryText, additionalRequirements, title);
+  // Generate test steps using the structured ADF when available
+  const testSteps = generateTestSteps(userStoryText, additionalRequirements, title, adfDescription);
   
-  // Generate expected results
+  // Generate expected results scoped to the story
   const expectedResults = [
-    "All test steps execute successfully without errors",
-    "The functionality behaves as described in the user story",
-    "System responds appropriately to user actions",
-    "Data is processed and stored correctly",
-    "User interface displays expected information and feedback"
+    `All acceptance criteria for "${title}" are satisfied`,
+    "The feature behaves as described in the user story without errors",
+    "System state is consistent after all operations",
+    "User interface displays feedback appropriate to each action"
   ];
   
-  // Generate test data requirements
-  const testData = [
-    {
-      category: "User Data",
-      description: "Valid user credentials and profile information",
-      examples: "Username, password, email, user roles"
-    },
-    {
-      category: "System Data", 
-      description: "Required system configuration and reference data",
-      examples: "Configuration settings, lookup values, default parameters"
-    },
-    {
-      category: "Test Scenarios Data",
-      description: "Specific data needed for test scenario execution",
-      examples: "Input values, expected outputs, boundary conditions"
-    }
-  ];
-  
-  // Generate acceptance criteria
-  const acceptanceCriteria = generateAcceptanceCriteria(userStoryText, additionalRequirements);
+  // Generate acceptance criteria section from parsed criteria (or generic fallback)
+  const acceptanceCriteria = generateAcceptanceCriteria(userStoryText, additionalRequirements, parsedCriteria);
   
   return {
     summary,
@@ -1374,7 +1388,6 @@ function generateTestCaseContent(userStoryText, additionalRequirements) {
     testSteps,
     preconditions,
     expectedResults,
-    testData,
     acceptanceCriteria
   };
 }
@@ -1402,153 +1415,339 @@ function extractTextFromADF(adfContent) {
   return extractTextRecursive(adfContent).trim() || 'No description provided';
 }
 
-// Helper function to generate test steps specific to the user story
-function generateTestSteps(userStoryText, additionalRequirements, title) {
-  console.log('📝 Generating specific test steps for:', title);
-  
-  const lowerStory = userStoryText.toLowerCase();
-  const lowerTitle = title.toLowerCase();
-  
-  // Start with basic setup steps
-  const steps = [
-    {
-      stepNumber: 1,
-      action: "Navigate to the application",
-      data: "Open the application URL in a supported browser",
-      expectedResult: "Application loads successfully and login page is displayed"
-    },
-    {
-      stepNumber: 2,
-      action: "Authenticate with valid credentials",
-      data: "Enter valid username and password",
-      expectedResult: "User is successfully logged in and redirected to main dashboard"
+/**
+ * Extracts individual acceptance criteria items from an ADF (Atlassian Document Format) document.
+ *
+ * Jira descriptions are stored as ADF JSON. Acceptance criteria are typically written as
+ * bullet lists (bulletList nodes). This function walks the ADF tree and returns each list
+ * item as a plain text string, so they can be used to generate specific test steps.
+ *
+ * It also looks for sections preceded by a heading containing "acceptance criteria" so it
+ * can focus only on the relevant bullet list when the description has multiple sections.
+ *
+ * @param {object} adfContent - The ADF document object from a Jira issue's description field
+ * @returns {string[]} Array of plain text acceptance criteria strings (may be empty)
+ */
+function extractAcceptanceCriteriaFromADF(adfContent) {
+  if (!adfContent || typeof adfContent !== 'object' || !Array.isArray(adfContent.content)) {
+    return [];
+  }
+
+  // Helper: recursively extract all text from an ADF node as a flat string
+  function nodeToText(node) {
+    if (!node) return '';
+    if (node.text) return node.text;
+    if (node.content && Array.isArray(node.content)) {
+      return node.content.map(nodeToText).join('');
     }
-  ];
-  
-  // Generate specific steps based on the user story content
-  if (lowerStory.includes('clothing') && (lowerStory.includes('suggestion') || lowerStory.includes('recommend'))) {
-    steps.push({
-      stepNumber: steps.length + 1,
-      action: "Navigate to the clothing recommendations section",
-      data: "Access the personalized clothing suggestions feature from the main menu",
-      expectedResult: "Clothing recommendations interface is displayed"
-    });
-    
-    if (lowerStory.includes('weather') || lowerStory.includes('season') || lowerStory.includes('region')) {
-      steps.push({
-        stepNumber: steps.length + 1,
-        action: "Set or verify location and preferences",
-        data: "Ensure location is set correctly and weather preferences are configured",
-        expectedResult: "Location and weather preferences are properly configured"
-      });
-      
-      steps.push({
-        stepNumber: steps.length + 1,
-        action: "Request personalized clothing suggestions",
-        data: "Click on 'Get Recommendations' or similar button to generate suggestions",
-        expectedResult: "System processes request and generates personalized clothing suggestions"
-      });
-      
-      steps.push({
-        stepNumber: steps.length + 1,
-        action: "Verify weather-based recommendations",
-        data: "Check that clothing suggestions are appropriate for current weather conditions",
-        expectedResult: "Clothing recommendations match current weather (e.g., warm clothes for cold weather)"
-      });
-      
-      steps.push({
-        stepNumber: steps.length + 1,
-        action: "Verify seasonal appropriateness",
-        data: "Ensure suggestions align with the current season",
-        expectedResult: "Recommendations reflect seasonal clothing choices (e.g., winter coats in winter)"
-      });
-      
-      steps.push({
-        stepNumber: steps.length + 1,
-        action: "Verify regional considerations",
-        data: "Check that suggestions consider regional climate and cultural preferences",
-        expectedResult: "Clothing suggestions are appropriate for the user's geographic region"
-      });
+    return '';
+  }
+
+  // Helper: extract all bullet/ordered list items from a listItem node as strings
+  function extractListItems(listNode) {
+    const items = [];
+    if (!listNode.content) return items;
+    for (const child of listNode.content) {
+      // Each listItem wraps one or more paragraph nodes
+      if (child.type === 'listItem') {
+        const text = nodeToText(child).trim();
+        if (text) items.push(text);
+      }
     }
-  } else {
-    // Generate generic but more specific steps based on common patterns
-    if (lowerStory.includes('create') || lowerStory.includes('add') || lowerStory.includes('new')) {
-      steps.push({
-        stepNumber: steps.length + 1,
-        action: "Navigate to the creation feature",
-        data: "Access the functionality for creating new items as described in the user story",
-        expectedResult: "Creation interface is displayed with all necessary fields"
-      });
-      
-      steps.push({
-        stepNumber: steps.length + 1,
-        action: "Fill in required information",
-        data: "Enter all mandatory fields with valid data as specified in the user story",
-        expectedResult: "Form accepts input and validation passes for all fields"
-      });
-      
-      steps.push({
-        stepNumber: steps.length + 1,
-        action: "Submit the creation request",
-        data: "Click save/create button to complete the action",
-        expectedResult: "New item is created successfully with confirmation message displayed"
-      });
-    } else {
-      // Default step for accessing the main feature
-      steps.push({
-        stepNumber: steps.length + 1,
-        action: `Access the ${title.toLowerCase()} feature`,
-        data: "Navigate to the specific functionality described in the user story",
-        expectedResult: "Feature interface is displayed with all expected elements and controls"
-      });
+    return items;
+  }
+
+  const topLevelNodes = adfContent.content;
+  const criteria = [];
+
+  // Strategy 1: Look for a heading that mentions "acceptance criteria" and grab the
+  // bullet list immediately following it.
+  let insideACSection = false;
+  for (const node of topLevelNodes) {
+    if (node.type === 'heading') {
+      const headingText = nodeToText(node).toLowerCase();
+      // Start capturing after a heading like "Acceptance Criteria", "AC", etc.
+      insideACSection = headingText.includes('acceptance') || headingText.includes(' ac');
+    } else if (insideACSection && (node.type === 'bulletList' || node.type === 'orderedList')) {
+      criteria.push(...extractListItems(node));
+      // Only take the first matching list after the heading
+      insideACSection = false;
+    } else if (insideACSection && node.type === 'heading') {
+      // A new heading means we've moved past the AC section
+      insideACSection = false;
     }
   }
-  
-  // Add final verification step
-  steps.push({
-    stepNumber: steps.length + 1,
-    action: "Verify final state and functionality",
-    data: "Confirm that all expected functionality works as described in the user story",
-    expectedResult: "All features function correctly and user story requirements are met"
-  });
-  
+
+  // Strategy 2: If no headed AC section was found, fall back to collecting ALL bullet
+  // list items from the document (common when the story is a simple list without headings)
+  if (criteria.length === 0) {
+    for (const node of topLevelNodes) {
+      if (node.type === 'bulletList' || node.type === 'orderedList') {
+        criteria.push(...extractListItems(node));
+      }
+    }
+  }
+
+  return criteria;
+}
+
+/**
+ * Extracts acceptance criteria from plain text when ADF is not available.
+ *
+ * Looks for lines that follow an "Acceptance Criteria" header, or simply returns
+ * all non-empty lines that look like list items (starting with -, *, •, or a number).
+ *
+ * @param {string} text - Plain text user story content
+ * @returns {string[]} Array of extracted criteria strings
+ */
+function extractAcceptanceCriteriaFromText(text) {
+  if (!text) return [];
+
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const criteria = [];
+
+  // Look for an "Acceptance Criteria" section header, then collect lines after it
+  let inACSection = false;
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (lower.includes('acceptance criteria') || lower.includes('acceptance criterion')) {
+      inACSection = true;
+      continue;
+    }
+    // Stop collecting if we hit another known section header
+    if (inACSection && /^(description|context|other information|priority|design|notes?)[\s:]/i.test(line)) {
+      inACSection = false;
+      continue;
+    }
+    if (inACSection) {
+      // Strip common list prefixes: -, *, •, 1., 2., etc.
+      const cleaned = line.replace(/^[-*•]\s+/, '').replace(/^\d+\.\s+/, '').trim();
+      if (cleaned) criteria.push(cleaned);
+    }
+  }
+
+  // Fallback: if no AC section found, pick up bullet-style lines from the whole text
+  if (criteria.length === 0) {
+    for (const line of lines) {
+      if (/^[-*•]\s+/.test(line) || /^\d+\.\s+/.test(line)) {
+        const cleaned = line.replace(/^[-*•]\s+/, '').replace(/^\d+\.\s+/, '').trim();
+        if (cleaned) criteria.push(cleaned);
+      }
+    }
+  }
+
+  return criteria;
+}
+
+/**
+ * Generates specific, meaningful test steps driven by the acceptance criteria extracted
+ * from the user story.
+ *
+ * Each acceptance criterion becomes its own dedicated test step (action → data → expected
+ * result), so that the test case directly maps to what the story requires rather than
+ * producing generic boilerplate steps.
+ *
+ * The function also accepts the raw ADF description object (when available from Jira) so
+ * it can extract structured bullet-list items rather than relying on flat text parsing.
+ *
+ * @param {string} userStoryText - Plain text representation of the user story
+ * @param {string|null} additionalRequirements - Any extra requirements provided by the user
+ * @param {string} title - The user story title / summary
+ * @param {object|null} adfDescription - Raw ADF description from the Jira issue (optional)
+ * @returns {Array<{stepNumber, action, data, expectedResult}>}
+ */
+function generateTestSteps(userStoryText, additionalRequirements, title, adfDescription = null) {
+  console.log('📝 Generating specific test steps for:', title);
+
+  // --- 1. Extract acceptance criteria ---
+  // Prefer structured ADF extraction (preserves bullet structure), fall back to plain text.
+  let acceptanceCriteria = [];
+  if (adfDescription) {
+    acceptanceCriteria = extractAcceptanceCriteriaFromADF(adfDescription);
+    console.log(`📋 Extracted ${acceptanceCriteria.length} criteria from ADF`);
+  }
+  if (acceptanceCriteria.length === 0) {
+    acceptanceCriteria = extractAcceptanceCriteriaFromText(userStoryText);
+    console.log(`📋 Extracted ${acceptanceCriteria.length} criteria from plain text`);
+  }
+
+  // Also parse any additional requirements as extra criteria
+  if (additionalRequirements) {
+    const extraCriteria = extractAcceptanceCriteriaFromText(additionalRequirements);
+    if (extraCriteria.length > 0) {
+      acceptanceCriteria.push(...extraCriteria);
+    } else if (additionalRequirements.trim()) {
+      // Treat the whole additional requirements block as a single criterion
+      acceptanceCriteria.push(additionalRequirements.trim());
+    }
+  }
+
+  // --- 2. Build test steps ---
+  const steps = [];
+
+  if (acceptanceCriteria.length > 0) {
+    // Generate one focused test step per acceptance criterion.
+    // Each step directly tests that specific requirement, making the test case
+    // traceable back to the story's stated acceptance criteria.
+    acceptanceCriteria.forEach((criterion, index) => {
+      const criterionLower = criterion.toLowerCase();
+
+      // Determine the nature of this criterion to produce a more precise action verb
+      let action, data, expectedResult;
+
+      if (criterionLower.includes('discoverable') || criterionLower.includes('search') || criterionLower.includes('find') || criterionLower.includes('visible') || criterionLower.includes('display')) {
+        action = `Verify: ${criterion}`;
+        data = `Navigate to the relevant section and search/browse for the items described in the criterion`;
+        expectedResult = `${criterion} — the items are visible and accessible as expected`;
+
+      } else if (criterionLower.includes('role') || criterionLower.includes('access') || criterionLower.includes('permission') || criterionLower.includes('authoriz') || criterionLower.includes('restrict')) {
+        action = `Verify: ${criterion}`;
+        data = `Log in as a user with the appropriate role and attempt to access the controlled resource`;
+        expectedResult = `${criterion} — access is granted or denied correctly based on the user's role`;
+
+      } else if (criterionLower.includes('audit') || criterionLower.includes('log') || criterionLower.includes('track') || criterionLower.includes('history') || criterionLower.includes('lineage') || criterionLower.includes('trace')) {
+        action = `Verify: ${criterion}`;
+        data = `Perform the tracked action and then inspect the audit log or history section`;
+        expectedResult = `${criterion} — the action is recorded accurately with the correct metadata`;
+
+      } else if (criterionLower.includes('governance') || criterionLower.includes('compliance') || criterionLower.includes('control') || criterionLower.includes('policy')) {
+        action = `Verify: ${criterion}`;
+        data = `Navigate to the governance/compliance section and review the available controls`;
+        expectedResult = `${criterion} — governance controls are present and enforceable`;
+
+      } else if (criterionLower.includes('creat') || criterionLower.includes('add') || criterionLower.includes('new') || criterionLower.includes('submit') || criterionLower.includes('input')) {
+        action = `Verify: ${criterion}`;
+        data = `Fill in the required fields with valid test data and submit the form`;
+        expectedResult = `${criterion} — the item is created successfully and confirmation is shown`;
+
+      } else if (criterionLower.includes('updat') || criterionLower.includes('edit') || criterionLower.includes('modif') || criterionLower.includes('chang')) {
+        action = `Verify: ${criterion}`;
+        data = `Select an existing item, modify the relevant fields, and save the changes`;
+        expectedResult = `${criterion} — changes are persisted and the updated state is reflected in the UI`;
+
+      } else if (criterionLower.includes('delet') || criterionLower.includes('remov') || criterionLower.includes('archiv')) {
+        action = `Verify: ${criterion}`;
+        data = `Select an existing item and trigger the delete/remove/archive action`;
+        expectedResult = `${criterion} — the item is removed or archived and no longer appears in the active list`;
+
+      } else if (criterionLower.includes('notif') || criterionLower.includes('alert') || criterionLower.includes('email') || criterionLower.includes('message')) {
+        action = `Verify: ${criterion}`;
+        data = `Trigger the event that should produce the notification and check the notification channel`;
+        expectedResult = `${criterion} — the notification is received with the correct content and timing`;
+
+      } else if (criterionLower.includes('export') || criterionLower.includes('download') || criterionLower.includes('report') || criterionLower.includes('generat')) {
+        action = `Verify: ${criterion}`;
+        data = `Trigger the export/report generation with appropriate parameters`;
+        expectedResult = `${criterion} — the file or report is generated correctly with all expected data`;
+
+      } else if (criterionLower.includes('integrat') || criterionLower.includes('connect') || criterionLower.includes('sync') || criterionLower.includes('import')) {
+        action = `Verify: ${criterion}`;
+        data = `Initiate the integration/sync and monitor the data flow between systems`;
+        expectedResult = `${criterion} — data is transferred accurately and the integration completes without errors`;
+
+      } else {
+        // Generic fallback — still scoped to the specific criterion text
+        action = `Verify: ${criterion}`;
+        data = `Perform the steps necessary to exercise this requirement in the test environment`;
+        expectedResult = `${criterion} — the system behaves as stated in the acceptance criterion`;
+      }
+
+      steps.push({
+        stepNumber: steps.length + 1,
+        action,
+        data,
+        expectedResult
+      });
+    });
+
+  } else {
+    // No acceptance criteria could be parsed — generate a minimal set of steps
+    // scoped to the story title so they are at least feature-specific.
+    console.log('⚠️ No acceptance criteria found, generating title-scoped fallback steps');
+
+    steps.push({
+      stepNumber: 1,
+      action: `Navigate to the "${title}" feature`,
+      data: `Open the application and navigate to the area described in the user story: "${title}"`,
+      expectedResult: `The feature area for "${title}" is displayed and all primary UI elements are visible`
+    });
+
+    steps.push({
+      stepNumber: 2,
+      action: `Exercise the core functionality of "${title}"`,
+      data: `Interact with the main controls and inputs as a typical user would`,
+      expectedResult: `The feature behaves correctly and the outcome matches the intent described in the user story`
+    });
+
+    steps.push({
+      stepNumber: 3,
+      action: `Verify error and edge-case handling`,
+      data: `Attempt invalid inputs or boundary conditions relevant to "${title}"`,
+      expectedResult: `The system handles edge cases gracefully with clear, helpful feedback`
+    });
+  }
+
   return steps;
 }
 
 // Helper function to generate acceptance criteria
-function generateAcceptanceCriteria(userStoryText, additionalRequirements) {
-  const criteria = [
-    {
-      id: 1,
-      criterion: "Functional Requirements",
-      description: "All functionality described in the user story works as expected"
-    },
-    {
-      id: 2,
-      criterion: "User Interface",
-      description: "UI elements are intuitive, responsive, and accessible"
-    },
-    {
-      id: 3,
-      criterion: "Performance",
-      description: "Operations complete within acceptable time limits"
-    },
-    {
-      id: 4,
-      criterion: "Data Integrity",
-      description: "Data is accurately processed, stored, and retrieved"
-    },
-    {
-      id: 5,
-      criterion: "Error Handling",
-      description: "System handles errors gracefully with appropriate user feedback"
-    }
-  ];
-  
-  // Add specific criteria based on additional requirements
+/**
+ * Builds the acceptance criteria section of the test case.
+ *
+ * When pre-parsed criteria are available (extracted from the Jira ADF description),
+ * they are used directly — each criterion becomes its own entry so the test case
+ * is fully traceable to the story's stated requirements.
+ *
+ * Falls back to a set of standard quality criteria when no structured criteria
+ * are available from the story.
+ *
+ * @param {string} userStoryText - Plain text user story
+ * @param {string|null} additionalRequirements - Extra requirements text
+ * @param {string[]} parsedCriteria - Pre-extracted acceptance criteria strings
+ * @returns {Array<{id, criterion, description}>}
+ */
+function generateAcceptanceCriteria(userStoryText, additionalRequirements, parsedCriteria = []) {
+  const criteria = [];
+
+  if (parsedCriteria.length > 0) {
+    // Use the actual acceptance criteria from the story as the primary entries.
+    // This ensures the test case acceptance criteria section mirrors the story exactly.
+    parsedCriteria.forEach((criterion, index) => {
+      criteria.push({
+        id: index + 1,
+        criterion: criterion,
+        description: `The system must satisfy this acceptance criterion: "${criterion}"`
+      });
+    });
+  } else {
+    // Fallback to standard quality dimensions when no specific criteria were parsed
+    criteria.push(
+      {
+        id: 1,
+        criterion: "Functional Requirements",
+        description: "All functionality described in the user story works as expected"
+      },
+      {
+        id: 2,
+        criterion: "User Interface",
+        description: "UI elements are intuitive, responsive, and accessible"
+      },
+      {
+        id: 3,
+        criterion: "Data Integrity",
+        description: "Data is accurately processed, stored, and retrieved"
+      },
+      {
+        id: 4,
+        criterion: "Error Handling",
+        description: "System handles errors gracefully with appropriate user feedback"
+      }
+    );
+  }
+
+  // Append extra criteria driven by additional requirements keywords
   if (additionalRequirements) {
     const reqLower = additionalRequirements.toLowerCase();
-    
     if (reqLower.includes('security')) {
       criteria.push({
         id: criteria.length + 1,
@@ -1556,7 +1755,6 @@ function generateAcceptanceCriteria(userStoryText, additionalRequirements) {
         description: "All security requirements and access controls are enforced"
       });
     }
-    
     if (reqLower.includes('mobile') || reqLower.includes('responsive')) {
       criteria.push({
         id: criteria.length + 1,
@@ -1564,7 +1762,6 @@ function generateAcceptanceCriteria(userStoryText, additionalRequirements) {
         description: "Functionality works correctly on mobile and tablet devices"
       });
     }
-    
     if (reqLower.includes('browser') || reqLower.includes('compatibility')) {
       criteria.push({
         id: criteria.length + 1,
@@ -1572,8 +1769,15 @@ function generateAcceptanceCriteria(userStoryText, additionalRequirements) {
         description: "Feature works across all supported browsers"
       });
     }
+    if (reqLower.includes('performance') || reqLower.includes('speed') || reqLower.includes('latency')) {
+      criteria.push({
+        id: criteria.length + 1,
+        criterion: "Performance",
+        description: "Operations complete within acceptable time limits under expected load"
+      });
+    }
   }
-  
+
   return criteria;
 }
 
