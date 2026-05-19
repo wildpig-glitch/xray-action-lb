@@ -25,15 +25,27 @@ For example: "User is authenticated with the required role", "The data catalog c
 Return them as a JSON array of plain strings: ["precondition 1", "precondition 2"]
 
 ### Test Steps
-Generate ONE focused test step per acceptance criterion. Each step must:
+Generate test steps in two groups:
+
+**Group 1 — Happy path (one step per acceptance criterion):**
+Each step must:
 - Have a specific, actionable **action** (what the tester does)
-- Have a concrete **data** field (what inputs or navigation are used)
-- Have a clear **result** (what the expected outcome is — directly traceable to the acceptance criterion)
+- Have a concrete **data** field (what inputs or navigation are used — include realistic example values)
+- Have a clear **result** (the expected outcome, directly traceable to the acceptance criterion)
 
 Do NOT generate generic steps like "Navigate to the application" or "Log in with valid credentials" unless they are explicitly in the acceptance criteria.
 Do NOT generate a "Verify final state" catch-all step.
 
-Return test steps as a JSON array:
+**Group 2 — Negative/error scenarios (2-3 steps):**
+After the happy path steps, add specific negative test steps covering error cases relevant to this user story. Examples of what to consider (pick what is relevant):
+- Invalid or missing inputs (e.g. invalid tokens, malformed requests, empty fields)
+- Unauthorised access attempts (e.g. wrong role, expired session, missing permissions)
+- Not-found scenarios (e.g. 404 responses, missing resources, deleted items)
+- Boundary conditions (e.g. empty results, maximum limits exceeded)
+
+These must be specific to the feature being tested — do not add generic error steps that don't relate to the user story.
+
+Return ALL steps (happy path + negative) as a single JSON array:
 [
   {"action": "...", "data": "...", "result": "..."},
   {"action": "...", "data": "...", "result": "..."}
