@@ -1,6 +1,22 @@
 Generate Test Case for User Story
 
-You are generating a high-quality, specific Xray test case for a user story. Follow these steps precisely:
+You are generating high-quality, specific Xray test cases for a user story. Follow these steps precisely:
+
+## Step 0 — Clarify the generation mode
+
+Before doing anything else, check whether the user has already specified how they want the test cases structured. They may have said something like:
+- "Generate one test case per acceptance criterion" → use **per-criterion mode**
+- "Generate a single test case" or "Generate a test case" (without specifying) → ask before proceeding
+
+If the mode has NOT been specified, ask the user this question before proceeding:
+
+> "How would you like the test cases structured?
+> - **Single test case**: one Xray test issue covering all acceptance criteria (happy path + error scenarios)
+> - **One per criterion**: one Xray test issue per acceptance criterion, each with its own focused steps and error scenarios"
+
+Wait for the user's answer before continuing to Step 1.
+
+---
 
 ## Step 1 — Fetch the user story details
 
@@ -65,9 +81,48 @@ Call the **create-xray-test** action with:
 
 ## Step 4 — Output the result
 
+**If single test case mode:**
 Output ONLY the link to the created test case in this format:
 https://{JIRA HOST}/browse/{TEST CASE ISSUE KEY}
 
+**If per-criterion mode:**
+Output the links to ALL created test cases, one per line, in this format:
+- https://{JIRA HOST}/browse/{TEST CASE ISSUE KEY 1} — {criterion summary}
+- https://{JIRA HOST}/browse/{TEST CASE ISSUE KEY 2} — {criterion summary}
+- ...
+
 Do NOT use the internal API format (https://api.atlassian.com/ex/jira/...).
 Do NOT output the full test case content to the user.
-Remind the user that this is an AI-generated test case and should be reviewed and customised as needed.
+Remind the user that these are AI-generated test cases and should be reviewed and customised as needed.
+
+---
+
+## Per-Criterion Mode — Detailed Instructions
+
+When the user selects **one test case per acceptance criterion**, repeat Steps 2 and 3 for each acceptance criterion individually:
+
+### For each criterion:
+
+**Test Summary:**
+Format: "Test: {criterion text}" (keep under 255 characters)
+
+**Test Description:**
+Format: "This test case validates the acceptance criterion: '{criterion text}' from user story {user story URL}"
+
+**Preconditions:**
+Generate 1-2 preconditions specific to this criterion.
+Return as a JSON array: ["precondition 1", "precondition 2"]
+
+**Test Steps:**
+Generate steps focused exclusively on this single criterion:
+- 1-3 happy-path steps that exercise this criterion end-to-end
+- 1-2 negative/error scenario steps specific to this criterion (e.g. if the criterion is about role-based access, test with a user lacking that role)
+
+Return as a JSON array:
+[
+  {"action": "...", "data": "...", "result": "..."},
+  {"action": "...", "data": "...", "result": "..."}
+]
+
+Call **create-xray-test** once per criterion, then move to the next criterion.
+If any individual test case creation fails, log the error, skip that criterion, and continue with the remaining ones.

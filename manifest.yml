@@ -182,6 +182,7 @@ modules:
         - get test steps for this issue
         - get test runs for this issue
         - generate a test case for this user story
+        - generate one test case per acceptance criterion for this user story
       actions:
         - get-xray-data
         - get-test-steps
