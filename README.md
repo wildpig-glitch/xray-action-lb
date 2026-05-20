@@ -14,6 +14,12 @@ The Rovo agent's LLM reads the user story acceptance criteria and generates:
 - Story-specific preconditions
 - A descriptive test summary and description
 
+**Two generation modes are supported:**
+- **Single test case**: one Xray test issue covering all acceptance criteria (happy path + error scenarios)
+- **One per criterion**: one Xray test issue per acceptance criterion, each with its own focused steps, error scenarios, and preconditions
+
+If not specified upfront, the agent will ask which mode you prefer before proceeding.
+
 ### Xray Test Data Retrieval
 - **Get Xray Data**: Retrieve comprehensive Xray data for any test issue with user choice of data type
 - **Get Test Steps**: Fetch detailed test steps, actions, and expected results
@@ -157,6 +163,7 @@ The Rovo agent supports natural language interactions. You can:
 - "Generate a test case for SDF-22"
 - "Create an Xray test for this user story: SDF-45"
 - "Generate tests for the data lineage tracking story"
+- "Generate one test case per acceptance criterion for this user story" *(skips the mode question and goes straight to per-criterion mode)*
 
 **Test data retrieval:**
 - "Retrieve Xray data for this test case"
@@ -307,6 +314,11 @@ forge logs -e development --since 15m
 - Review [Xray Cloud API documentation](https://docs.getxray.app/display/XRAYCLOUD/REST+API) for Xray-related issues
 
 ## 🔄 Changelog
+
+### v3.1.0
+- **Per-criterion test case generation**: Agent now asks the user upfront whether to generate a single test case or one per acceptance criterion
+- Added `"generate one test case per acceptance criterion"` conversation starter
+- Per-criterion mode creates one focused Xray test issue per acceptance criterion, each with its own happy-path and error scenario steps
 
 ### v3.0.0
 - **LLM-driven test case generation**: Replaced rule-based step generation with Rovo LLM reasoning
